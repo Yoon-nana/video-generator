@@ -36,11 +36,11 @@ function remote($url,$method='GET',$data=null) {
 if($action==='generate'){
  if($_SERVER['REQUEST_METHOD']!=='POST'||!hash_equals($_SESSION['csrf'],$_SERVER['HTTP_X_CSRF_TOKEN']??'')) fail('잘못된 요청입니다.',403);
  $input=json_decode(file_get_contents('php://input'),true)??[]; $prompt=trim((string)($input['prompt']??''));
- $duration=filter_var($input['duration']??null,FILTER_VALIDATE_INT); if($duration===false||$duration<4||$duration>8)fail('영상 길이는 4초부터 8초까지 선택해 주세요.');
+ $duration=filter_var($input['duration']??null,FILTER_VALIDATE_INT); if($duration===false||$duration<5||$duration>8)fail('영상 길이는 5초부터 8초까지 선택해 주세요.');
  if($prompt===''||strlen($prompt)>6000)fail('영상 설명을 입력해 주세요. (최대 2,000자)');
  if(!empty($_SESSION['last_generation']) && time()-$_SESSION['last_generation']<20)fail('잠시 후 다시 생성해 주세요.',429);
  if(!empty($_SESSION['active_job']))fail('현재 영상 생성이 진행 중입니다.',409);
- $result=remote('https://openrouter.ai/api/v1/videos','POST',['model'=>'heygen/heygen-video-1','prompt'=>$prompt,'aspect_ratio'=>'9:16','duration'=>max(5,$duration),'resolution'=>'480p']);
+ $result=remote('https://openrouter.ai/api/v1/videos','POST',['model'=>'heygen/heygen-video-1','prompt'=>$prompt,'aspect_ratio'=>'9:16','duration'=>$duration,'resolution'=>'480p']);
  $id=$result['id']??''; if(!preg_match('/^gen-vid-[A-Za-z0-9-]+$/',$id))fail('영상 생성 응답을 확인할 수 없습니다.',502);
  $_SESSION['active_job']=$id;$_SESSION['active_duration']=$duration;$_SESSION['last_generation']=time(); out(['status'=>'pending']);
 }
@@ -56,7 +56,7 @@ if($action==='status'){
  $ctx=stream_context_create(['http'=>['timeout'=>90,'follow_location'=>0]]);$source=@fopen($url,'rb',false,$ctx); if(!$source)fail('완성된 영상을 받지 못했습니다.',502);
  $dest=fopen($in,'wb'); if(!$dest)fail('영상 저장에 실패했습니다.',500); $bytes=stream_copy_to_stream($source,$dest,50000000);fclose($source);fclose($dest);
  if(!$bytes){@unlink($in);fail('영상 파일이 비어 있습니다.',502);}
- $duration=(int)($_SESSION['active_duration']??4); if($duration<4||$duration>8)$duration=4;
+ $duration=(int)($_SESSION['active_duration']??5); if($duration<5||$duration>8)$duration=5;
  $cmd='/usr/bin/ffmpeg -nostdin -v error -y -i '.escapeshellarg($in).' -t '.escapeshellarg((string)$duration).' -c:v libx264 -preset veryfast -crf 21 -c:a aac -movflags +faststart '.escapeshellarg($out).' 2>&1';
  exec($cmd,$log,$code);@unlink($in); if($code!==0||!is_file($out)){error_log('ffmpeg failed');fail('영상 길이 조정에 실패했습니다.',500);}
  $_SESSION['video_path']=$out; unset($_SESSION['active_job'],$_SESSION['active_duration']);out(['status'=>'completed','cost'=>$r['usage']['cost']??null]);
